@@ -1,7 +1,7 @@
 """Shared fixtures for backend API tests.
 
-Uses in-memory SQLite and patches external services (MinIO, Redis/RQ)
-so tests run without any infrastructure.
+Uses in-memory SQLite with StaticPool and patches external services
+(MinIO, Redis/RQ) so tests run without any infrastructure.
 """
 
 from __future__ import annotations
@@ -12,20 +12,33 @@ from unittest.mock import MagicMock, patch
 import pytest
 from sqlalchemy import JSON, Text, create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 # ---------------------------------------------------------------------------
 # Patch PostgreSQL-only column types before any model is imported.
+# Stopped explicitly in the _stop_patches fixture below.
 # ---------------------------------------------------------------------------
-patch("pgvector.sqlalchemy.Vector", lambda dim: Text()).start()
-patch("sqlalchemy.dialects.postgresql.ARRAY", lambda item_type: JSON()).start()
+_patches = [
+    patch("pgvector.sqlalchemy.Vector", lambda dim: Text()),
+    patch("sqlalchemy.dialects.postgresql.ARRAY", lambda item_type: JSON()),
+]
+for p in _patches:
+    p.start()
 
+from fastapi.testclient import TestClient  # noqa: E402
 from find_api.core.database import Base, get_db  # noqa: E402
 from find_api.main import app  # noqa: E402
 
 # ---------------------------------------------------------------------------
-# In-memory SQLite engine
+# In-memory SQLite engine with StaticPool.
+# StaticPool reuses one connection so the in-memory DB is visible across
+# the test thread and the ASGI app thread (TestClient runs a second thread).
 # ---------------------------------------------------------------------------
-_engine = create_engine("sqlite://", connect_args={"check_same_thread": False})
+_engine = create_engine(
+    "sqlite://",
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
 _TestSession = sessionmaker(bind=_engine)
 Base.metadata.create_all(bind=_engine)
 
@@ -36,9 +49,17 @@ async def _noop_lifespan(_app):
     yield
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _stop_patches():
+    """Stop module-level patches after the test session ends."""
+    yield
+    for p in _patches:
+        p.stop()
+
+
 @pytest.fixture()
 def db():
-    """Provide a clean database session for each test."""
+    """Provide a clean database for each test."""
     Base.metadata.drop_all(bind=_engine)
     Base.metadata.create_all(bind=_engine)
     session = _TestSession()
@@ -53,7 +74,12 @@ def client(db):
     """TestClient with mocked storage and queue dependencies."""
 
     def _override_db():
-        yield db
+        """Create a fresh session per request (thread-safe)."""
+        session = _TestSession()
+        try:
+            yield session
+        finally:
+            session.close()
 
     app.dependency_overrides[get_db] = _override_db
     app.router.lifespan_context = _noop_lifespan
@@ -79,7 +105,3 @@ def client(db):
             yield c
 
     app.dependency_overrides.clear()
-
-
-# Re-export for convenience in test files
-from fastapi.testclient import TestClient  # noqa: E402, F401

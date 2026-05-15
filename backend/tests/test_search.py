@@ -19,15 +19,17 @@ def _mock_search(client, fake_rows):
         yield mock_db
 
     app.dependency_overrides[get_db] = _override
-
-    with (
-        patch("find_api.routers.search.settings", ML_MODE="mock", EMBEDDING_DIM=768),
-        patch(
-            "find_api.ml.mock_embedder.get_mock_embedder",
-            return_value=mock_embedder,
-        ),
-    ):
-        return client.get("/api/search", params={"q": "sunset"})
+    try:
+        with (
+            patch("find_api.routers.search.settings", ML_MODE="mock", EMBEDDING_DIM=768),
+            patch(
+                "find_api.ml.mock_embedder.get_mock_embedder",
+                return_value=mock_embedder,
+            ),
+        ):
+            return client.get("/api/search", params={"q": "sunset"})
+    finally:
+        app.dependency_overrides.pop(get_db, None)
 
 
 class TestSearchResponseShape:

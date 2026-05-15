@@ -40,6 +40,7 @@ class TestJobStatus:
         with patch("find_api.routers.status.Job.fetch", return_value=fake_job):
             response = client.get("/api/status/done-job")
 
+        assert response.status_code == 200
         body = response.json()
         assert body["status"] == "finished"
         assert body["result"] == {"media_id": 1}
@@ -57,6 +58,7 @@ class TestJobStatus:
         with patch("find_api.routers.status.Job.fetch", return_value=fake_job):
             response = client.get("/api/status/bad-job")
 
+        assert response.status_code == 200
         body = response.json()
         assert body["status"] == "failed"
         assert "error" in body

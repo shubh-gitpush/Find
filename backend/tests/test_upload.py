@@ -24,15 +24,16 @@ class TestUploadSuccess:
 
     def test_duplicate_returns_duplicate_status(self, client):
         data = b"same-image-bytes"
-        client.post(
+        first = client.post(
             "/api/upload",
             files=[("files", ("a.png", data, "image/png"))],
         )
+        assert first.status_code == 200
         response = client.post(
             "/api/upload",
             files=[("files", ("a.png", data, "image/png"))],
         )
-
+        assert response.status_code == 200
         assert response.json()["results"][0]["status"] == "duplicate"
 
 
