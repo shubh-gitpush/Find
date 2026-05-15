@@ -21,7 +21,9 @@ import {
   type UploadResult,
   uploadImages,
   uploadImagesBulk,
+  extractErrorMessage,
 } from "@/lib/api";
+
 
 type UploadMode = "single" | "bulk";
 type ProcessingState = "queued" | "processing" | "indexed" | "failed";
@@ -107,8 +109,8 @@ export default function UploadPage() {
         `Queued ${data.total} file${data.total === 1 ? "" : "s"} for analysis`,
       );
     },
-    onError: () => {
-      toast.error("Upload failed");
+    onError: (error) => {
+      toast.error(extractErrorMessage(error, "Upload failed"));
     },
   });
 
@@ -125,8 +127,8 @@ export default function UploadPage() {
         })`,
       );
     },
-    onError: () => {
-      toast.error("Bulk upload failed");
+    onError: (error) => {
+      toast.error(extractErrorMessage(error, "Bulk upload failed"));
     },
   });
 
