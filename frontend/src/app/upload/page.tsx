@@ -15,15 +15,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { toast } from "sonner";
 import {
+  extractErrorMessage,
   getJobStatus,
   type JobStatus,
   type UploadResponse,
   type UploadResult,
   uploadImages,
   uploadImagesBulk,
-  extractErrorMessage,
 } from "@/lib/api";
-
 
 type UploadMode = "single" | "bulk";
 type ProcessingState = "queued" | "processing" | "indexed" | "failed";
