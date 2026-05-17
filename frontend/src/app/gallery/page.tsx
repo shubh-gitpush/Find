@@ -106,7 +106,7 @@ function GalleryPageContent() {
     },
   });
 
-  const updateGalleryParams = useCallback(
+  const buildGalleryHref = useCallback(
     (nextState: { filter?: GalleryFilter; likedOnly?: boolean }) => {
       const nextFilter = nextState.filter ?? filter;
       const nextLikedOnly = nextState.likedOnly ?? likedOnly;
@@ -126,11 +126,18 @@ function GalleryPageContent() {
       }
 
       const queryString = nextParams.toString();
-      router.push(queryString ? `${pathname}?${queryString}` : pathname, {
+      return queryString ? `${pathname}?${queryString}` : pathname;
+    },
+    [filter, likedOnly, pathname, searchParams],
+  );
+
+  const updateGalleryParams = useCallback(
+    (nextState: { filter?: GalleryFilter; likedOnly?: boolean }) => {
+      router.push(buildGalleryHref(nextState), {
         scroll: false,
       });
     },
-    [filter, likedOnly, pathname, router, searchParams],
+    [buildGalleryHref, router],
   );
 
   useEffect(() => {
@@ -313,13 +320,6 @@ function GalleryPageContent() {
     { label: "Failed", value: "failed" },
   ] satisfies Array<{ label: string; value: GalleryFilter }>;
 
-  const handleFilterChange = useCallback(
-    (value: GalleryFilter) => {
-      updateGalleryParams({ filter: value });
-    },
-    [updateGalleryParams],
-  );
-
   const handleLikedOnlyChange = useCallback(() => {
     updateGalleryParams({ likedOnly: !likedOnly });
   }, [likedOnly, updateGalleryParams]);
@@ -384,10 +384,10 @@ function GalleryPageContent() {
         <div className="frost-panel delayed-enter mb-8 flex flex-col items-center justify-between gap-4 rounded-3xl px-4 py-3 md:flex-row">
           <div className="flex flex-wrap justify-center gap-1">
             {filters.map(({ label, value }) => (
-              <button
-                type="button"
+              <Link
                 key={value}
-                onClick={() => handleFilterChange(value)}
+                href={buildGalleryHref({ filter: value })}
+                scroll={false}
                 className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
                   filter === value
                     ? "bg-white text-black"
@@ -395,7 +395,7 @@ function GalleryPageContent() {
                 }`}
               >
                 {label}
-              </button>
+              </Link>
             ))}
           </div>
 
