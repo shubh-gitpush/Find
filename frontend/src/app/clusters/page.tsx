@@ -89,10 +89,7 @@ export default function ClustersPage() {
 
       if (message.includes("Not enough")) {
         toast.info(message);
-      } else if (
-        message.includes("No stable") ||
-        message.includes("no stable")
-      ) {
+      } else if (message.toLowerCase().includes("no stable")) {
         toast.info(message);
       } else {
         toast.success(message);
