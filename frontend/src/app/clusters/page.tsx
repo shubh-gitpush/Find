@@ -15,6 +15,7 @@ import {
   getJobStatus,
   triggerClustering,
   extractErrorMessage,
+  getGallery,
 } from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/media";
 
@@ -77,6 +78,12 @@ export default function ClustersPage() {
     },
   });
 
+  const indexedQuery = useQuery({
+    queryKey: ["indexed-stats"],
+    queryFn: () => getGallery({ status: "indexed", limit: 1 }),
+    refetchInterval: 10000,
+  });
+
   useEffect(() => {
     if (!clusterJobId || !clusterJobQuery.data) {
       return;
@@ -128,6 +135,8 @@ export default function ClustersPage() {
     activeJobStatus === "queued" || activeJobStatus === "started";
   const isClusterActionBusy =
     clusterMutation.isPending || clusterJobQuery.isFetching || isJobActive;
+  const isClusterButtonDisabled =
+    isClusterActionBusy || (indexedQuery.isSuccess && (indexedQuery.data?.total ?? 0) < 2);
   const filteredMembers =
     selectedClusterQuery.data?.members.filter((member) =>
       member.filename.toLowerCase().includes(filterText.toLowerCase()),
@@ -163,8 +172,13 @@ export default function ClustersPage() {
             <button
               type="button"
               onClick={() => clusterMutation.mutate()}
-              disabled={isClusterActionBusy}
+              disabled={isClusterButtonDisabled}
               className="white-pill px-5 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+              title={
+                indexedQuery.isSuccess && (indexedQuery.data?.total ?? 0) < 2
+                  ? `Need at least 2 indexed images (found ${indexedQuery.data?.total})`
+                  : undefined
+              }
             >
               {isClusterActionBusy ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -216,8 +230,13 @@ export default function ClustersPage() {
             <button
               type="button"
               onClick={() => clusterMutation.mutate()}
-              disabled={isClusterActionBusy}
+              disabled={isClusterButtonDisabled}
               className="white-pill px-5 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+              title={
+                indexedQuery.isSuccess && (indexedQuery.data?.total ?? 0) < 2
+                  ? `Need at least 2 indexed images (found ${indexedQuery.data?.total})`
+                  : undefined
+              }
             >
               {isClusterActionBusy ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

@@ -9,6 +9,7 @@ from find_api.core.queue import enqueue_clustering_job
 from find_api.core.storage import get_file_url
 from find_api.models.cluster import Cluster
 from find_api.models.media import Media
+from find_api.core.config import settings
 
 router = APIRouter()
 
@@ -112,8 +113,6 @@ def trigger_clustering(db: Session = Depends(get_db)):
     Returns:
         Job information
     """
-    from find_api.core.config import settings
-    
     indexed_count = db.query(Media).filter(Media.status == "indexed", Media.vector.isnot(None)).count()
     if indexed_count < settings.MIN_CLUSTER_SIZE:
         raise HTTPException(
@@ -124,5 +123,4 @@ def trigger_clustering(db: Session = Depends(get_db)):
                 "required_minimum": settings.MIN_CLUSTER_SIZE
             }
         )
-        
     return enqueue_clustering_job(reason="manual")
