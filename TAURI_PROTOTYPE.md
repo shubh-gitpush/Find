@@ -55,7 +55,7 @@ The installer is written to `frontend/src-tauri/target/release/bundle/`.
 
 ## Architecture
 
-```
+```text
 frontend/
 ├── next.config.js          # NEXT_OUTPUT=static enables output:"export" + unoptimized images
 ├── package.json            # desktop:dev / desktop:build scripts; @tauri-apps/cli devDep
