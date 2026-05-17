@@ -26,12 +26,14 @@ RUN if ! command -v python >/dev/null 2>&1; then \
       ln -s /usr/bin/python3 /usr/bin/python; \
     fi
 
-# Install uv and ensure binary directory on PATH. Keep the project venv
-# outside /app so the docker-compose bind mount cannot hide it at runtime.
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+# Install uv into a stable system path. The installer writes to /root/.local/bin
+# by default, so copy the binaries into /usr/local/bin for later build steps.
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && install -m 0755 /root/.local/bin/uv /usr/local/bin/uv \
+    && install -m 0755 /root/.local/bin/uvx /usr/local/bin/uvx
 ENV UV_PROJECT_ENVIRONMENT="/opt/find/.venv"
 ENV UV_PYTHON="${PYTHON_VERSION}"
-ENV PATH="/opt/find/.venv/bin:/root/.local/bin:/root/.cargo/bin:$PATH"
+ENV PATH="/opt/find/.venv/bin:/usr/local/bin:/root/.local/bin:/root/.cargo/bin:$PATH"
 ENV PYTHONPATH="/app/src"
 
 # Set working directory
