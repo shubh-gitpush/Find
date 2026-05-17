@@ -9,7 +9,7 @@ import logging
 
 from find_api.core.database import init_db
 from find_api.core.storage import init_storage
-from find_api.routers import upload, gallery, search, clusters, status, cluster
+from find_api.routers import upload, gallery, search, clusters, status, cluster, people
 
 # Configure logging
 logging.basicConfig(
@@ -77,6 +77,7 @@ app.include_router(search.router, prefix="/api", tags=["search"])
 app.include_router(clusters.router, prefix="/api", tags=["clusters"])
 app.include_router(cluster.router, prefix="/api", tags=["cluster-ops"])
 app.include_router(status.router, prefix="/api", tags=["status"])
+app.include_router(people.router, prefix="/api", tags=["people"])
 
 
 @app.get("/")

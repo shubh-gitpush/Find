@@ -118,3 +118,52 @@ def generate_hybrid_embedding(
     except Exception as e:
         logger.error(f"CLIP embedding failed: {e}")
         raise
+def detect_and_store_faces(image: Image.Image, media_id: int, db) -> int:
+    """
+    Detect faces in image and store them in the database.
+    Returns the number of faces detected.
+
+    In mock mode: skips detection entirely (no model needed).
+    In real mode: uses InsightFace antelopev2 to detect faces.
+    """
+    # Import here to avoid circular imports
+    from find_api.models.face import Face
+
+    # Mock mode - skip face detection entirely
+    # This keeps light/mock mode working without downloading face models
+    if settings.ML_MODE.lower() == "mock":
+        logger.info("Mock mode: skipping face detection for media %s", media_id)
+        return 0
+
+    # Real mode - run actual face detection
+    try:
+        logger.info("Running face detection for media %s...", media_id)
+        from find_api.ml.face_detector import get_face_detector
+
+        detector = get_face_detector()
+        faces = detector.detect_faces(image)
+
+        if not faces:
+            logger.info("No faces detected in media %s", media_id)
+            return 0
+
+        # Save each detected face to the database
+        for face_data in faces:
+            face = Face(
+                media_id=media_id,
+                bounding_box=face_data["bbox"],
+                embedding=face_data["embedding"],
+                confidence=face_data["confidence"],
+                # person_id is None for now - set after clustering
+            )
+            db.add(face)
+
+        db.commit()
+        logger.info("Stored %s faces for media %s", len(faces), media_id)
+        return len(faces)
+
+    except Exception as e:
+        logger.error("Face detection failed for media %s: %s", media_id, e)
+        db.rollback()
+        # Don't raise - face detection failure should not fail the whole job
+        return 0
