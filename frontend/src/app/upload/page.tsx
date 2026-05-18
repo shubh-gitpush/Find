@@ -30,6 +30,7 @@ type ProcessingState = "queued" | "processing" | "indexed" | "failed";
 type UploadListItem = UploadResult & {
   jobStatus?: JobStatus["status"];
   processingState?: ProcessingState;
+  processingStage?: string;
 };
 
 function hydrateResults(response: UploadResponse) {
@@ -70,6 +71,19 @@ function getDisplayStatus(item: UploadListItem) {
     return "processing";
   }
   return "queued";
+}
+
+function getDisplayStage(item: UploadListItem) {
+  if (item.status !== "uploaded") {
+    return null;
+  }
+  if (item.processingState === "indexed") {
+    return "indexed";
+  }
+  if (item.processingState === "failed") {
+    return item.processingStage ?? "failed";
+  }
+  return item.processingStage ?? item.processingState ?? "queued";
 }
 
 function getStatusClasses(item: UploadListItem) {
@@ -222,6 +236,7 @@ export default function UploadPage() {
             ...item,
             jobStatus: job.status,
             processingState,
+            processingStage: job.stage,
             error:
               processingState === "failed"
                 ? (job.error ?? item.error)
@@ -359,6 +374,7 @@ export default function UploadPage() {
           <div className="frost-panel flex rounded-full p-1">
             <button
               type="button"
+              aria-pressed={mode === "single"}
               onClick={() => setMode("single")}
               className={`rounded-full px-5 py-2 text-sm font-medium transition ${
                 mode === "single"
@@ -370,6 +386,7 @@ export default function UploadPage() {
             </button>
             <button
               type="button"
+              aria-pressed={mode === "bulk"}
               onClick={() => setMode("bulk")}
               className={`rounded-full px-5 py-2 text-sm font-medium transition ${
                 mode === "bulk"
@@ -471,6 +488,7 @@ export default function UploadPage() {
             <div className="space-y-2">
               {uploadedFiles.map((result) => {
                 const displayStatus = getDisplayStatus(result);
+                const displayStage = getDisplayStage(result);
 
                 return (
                   <div
@@ -489,9 +507,22 @@ export default function UploadPage() {
                         <Loader2 className="h-4 w-4 shrink-0 animate-spin text-[#3b9eff]" />
                       )}
 
-                      <p className="min-w-0 truncate text-sm font-medium text-[#f0f0f0]">
-                        {result.filename}
-                      </p>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-[#f0f0f0]">
+                          {result.filename}
+                        </p>
+                        {displayStage && (
+                          <p className="truncate text-xs text-[#a1a4a5]">
+                            {displayStage}
+                          </p>
+                        )}
+                        {result.processingState === "failed" &&
+                          result.error && (
+                            <p className="truncate text-xs text-[#ff9bab]">
+                              {result.error}
+                            </p>
+                          )}
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-3">
