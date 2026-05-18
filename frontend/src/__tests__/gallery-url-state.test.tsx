@@ -189,21 +189,21 @@ describe("Gallery — URL-state restoration", () => {
   // ── 1. Status tab UI ─────────────────────────────────────────────────────
 
   describe("status tab UI", () => {
-    it("renders all four filter tab buttons", async () => {
+    it("renders all four filter tab links", async () => {
       render(<GalleryPage />, { wrapper: makeWrapper() });
 
       await waitFor(() => {
         expect(
-          screen.getByRole("button", { name: /^all$/i }),
+          screen.getByRole("link", { name: /^all$/i }),
         ).toBeInTheDocument();
         expect(
-          screen.getByRole("button", { name: /^indexed$/i }),
+          screen.getByRole("link", { name: /^indexed$/i }),
         ).toBeInTheDocument();
         expect(
-          screen.getByRole("button", { name: /^processing$/i }),
+          screen.getByRole("link", { name: /^processing$/i }),
         ).toBeInTheDocument();
         expect(
-          screen.getByRole("button", { name: /^failed$/i }),
+          screen.getByRole("link", { name: /^failed$/i }),
         ).toBeInTheDocument();
       });
     });

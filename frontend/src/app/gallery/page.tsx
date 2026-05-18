@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -33,12 +33,108 @@ import {
 } from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/media";
 
+type GalleryFilter = "all" | "indexed" | "processing" | "failed";
+
+type GalleryEmptyState = {
+  title: string;
+  subtitle: string | null;
+  showUploadLink: boolean;
+  showClearLikedOnly: boolean;
+};
+
+function getGalleryEmptyState(
+  filter: GalleryFilter,
+  likedOnly: boolean,
+): GalleryEmptyState {
+  if (filter === "all") {
+    if (likedOnly) {
+      return {
+        title: "No liked images yet",
+        subtitle: "Like an image to save it here.",
+        showUploadLink: false,
+        showClearLikedOnly: true,
+      };
+    }
+
+    return {
+      title: "No images found",
+      subtitle: null,
+      showUploadLink: true,
+      showClearLikedOnly: false,
+    };
+  }
+
+  if (filter === "indexed") {
+    return likedOnly
+      ? {
+          title: "No liked indexed images yet",
+          subtitle:
+            "Try uploading images or check the Processing tab for items still in progress.",
+          showUploadLink: false,
+          showClearLikedOnly: true,
+        }
+      : {
+          title: "No indexed images yet",
+          subtitle:
+            "Try uploading images or check the Processing tab for items still in progress.",
+          showUploadLink: false,
+          showClearLikedOnly: false,
+        };
+  }
+
+  if (filter === "processing") {
+    return likedOnly
+      ? {
+          title: "No liked images are processing",
+          subtitle:
+            "None of your liked images are queued or running right now.",
+          showUploadLink: false,
+          showClearLikedOnly: true,
+        }
+      : {
+          title: "All clear",
+          subtitle: "No images are processing right now.",
+          showUploadLink: false,
+          showClearLikedOnly: false,
+        };
+  }
+
+  return likedOnly
+    ? {
+        title: "No failed liked images",
+        subtitle: "None of your liked images have failed recently.",
+        showUploadLink: false,
+        showClearLikedOnly: true,
+      }
+    : {
+        title: "No failed images",
+        subtitle: "Nothing failed recently.",
+        showUploadLink: false,
+        showClearLikedOnly: false,
+      };
+}
+
+const getFilterFromStatusParam = (status: string | null): GalleryFilter => {
+  if (status === "completed" || status === "indexed") {
+    return "indexed";
+  }
+
+  if (status === "processing" || status === "failed") {
+    return status;
+  }
+
+  return "all";
+};
+
+const getStatusParamFromFilter = (filter: GalleryFilter): string | null => {
+  if (filter === "all") {
+    return null;
+  }
+
+  return filter === "indexed" ? "completed" : filter;
+};
+
 function GalleryPageContent() {
-  const [page, setPage] = useState(1);
-  const [filter, setFilter] = useState<
-    "all" | "indexed" | "processing" | "failed"
-  >("all");
-  const [likedOnly, setLikedOnly] = useState(false);
   const [selectedMediaId, setSelectedMediaId] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{
     id: number;
@@ -51,7 +147,18 @@ function GalleryPageContent() {
   const limit = 24;
 
   const queryClient = useQueryClient();
+  const pathname = usePathname();
+  const router = useRouter();
   const searchParams = useSearchParams();
+  const filter = getFilterFromStatusParam(searchParams.get("status"));
+  const likedOnly = searchParams.get("liked") === "true";
+  const filterStateKey = `${filter}:${likedOnly}`;
+  const [pagination, setPagination] = useState({
+    filterStateKey,
+    page: 1,
+  });
+  const page =
+    pagination.filterStateKey === filterStateKey ? pagination.page : 1;
   const galleryQueryKey = useMemo(
     () => ["gallery", page, filter, likedOnly] as const,
     [page, filter, likedOnly],
@@ -77,6 +184,41 @@ function GalleryPageContent() {
         : false;
     },
   });
+
+  const buildGalleryHref = useCallback(
+    (nextState: { filter?: GalleryFilter; likedOnly?: boolean }) => {
+      const nextFilter = nextState.filter ?? filter;
+      const nextLikedOnly = nextState.likedOnly ?? likedOnly;
+      const nextParams = new URLSearchParams(searchParams.toString());
+      const statusParam = getStatusParamFromFilter(nextFilter);
+
+      if (statusParam) {
+        nextParams.set("status", statusParam);
+      } else {
+        nextParams.delete("status");
+      }
+
+      if (nextLikedOnly) {
+        nextParams.set("liked", "true");
+      } else {
+        nextParams.delete("liked");
+      }
+
+      const queryString = nextParams.toString();
+      return queryString ? `${pathname}?${queryString}` : pathname;
+    },
+    [filter, likedOnly, pathname, searchParams],
+  );
+
+  const updateGalleryParams = useCallback(
+    (nextState: { filter?: GalleryFilter; likedOnly?: boolean }) => {
+      router.push(buildGalleryHref(nextState), {
+        scroll: false,
+      });
+    },
+    [buildGalleryHref, router],
+  );
+
   useEffect(() => {
     if (hasOpenedFromQuery) {
       return;
@@ -248,14 +390,46 @@ function GalleryPageContent() {
   const closeDetail = useCallback(() => {
     setSelectedMediaId(null);
     setQuerySelectedItem(null);
-  }, []);
+
+    const params = new URLSearchParams(searchParams.toString());
+
+    params.delete("media");
+
+    const queryString = params.toString();
+    const url = queryString ? `${pathname}?${queryString}` : pathname;
+
+    router.replace(url, { scroll: false });
+  }, [router, pathname, searchParams]);
 
   const filters = [
-    { label: "All", value: "all" as const },
-    { label: "Indexed", value: "indexed" as const },
-    { label: "Processing", value: "processing" as const },
-    { label: "Failed", value: "failed" as const },
-  ];
+    { label: "All", value: "all" },
+    { label: "Indexed", value: "indexed" },
+    { label: "Processing", value: "processing" },
+    { label: "Failed", value: "failed" },
+  ] satisfies Array<{ label: string; value: GalleryFilter }>;
+
+  const handleLikedOnlyChange = useCallback(() => {
+    updateGalleryParams({ likedOnly: !likedOnly });
+  }, [likedOnly, updateGalleryParams]);
+
+  const handleClearLikedOnly = useCallback(() => {
+    updateGalleryParams({ likedOnly: false });
+  }, [updateGalleryParams]);
+
+  const updatePage = useCallback(
+    (updater: (currentPage: number) => number) => {
+      setPagination((current) => {
+        const currentPage =
+          current.filterStateKey === filterStateKey ? current.page : 1;
+
+        return {
+          filterStateKey,
+          page: updater(currentPage),
+        };
+      });
+    },
+    [filterStateKey],
+  );
 
   const handleToggleLike = useCallback(
     (mediaId: number) => {
@@ -283,6 +457,14 @@ function GalleryPageContent() {
     setDeleteTarget(null);
   }, []);
 
+  const emptyGalleryCopy = useMemo(() => {
+    if (!data || data.items.length > 0) {
+      return null;
+    }
+
+    return getGalleryEmptyState(filter, likedOnly);
+  }, [data, filter, likedOnly]);
+
   return (
     <div className="page-shell">
       <div className="container-shell py-10 md:py-14">
@@ -298,34 +480,30 @@ function GalleryPageContent() {
         <div className="frost-panel delayed-enter mb-8 flex flex-col items-center justify-between gap-4 rounded-3xl px-4 py-3 md:flex-row">
           <div className="flex flex-wrap justify-center gap-1">
             {filters.map(({ label, value }) => (
-              <button
-                type="button"
+              <Link
                 key={value}
-                onClick={() => {
-                  setFilter(value);
-                  setPage(1);
-                }}
+                href={buildGalleryHref({ filter: value })}
+                scroll={false}
+                aria-current={filter === value ? "page" : undefined}
                 className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
                   filter === value
                     ? "bg-white text-black"
-                    : "text-[#a1a4a5] hover:bg-white/[0.08] hover:text-[#f0f0f0]"
+                    : "text-[color:var(--silver)] hover:bg-[color:var(--frost-soft)] hover:text-[color:var(--near-white)]"
                 }`}
               >
                 {label}
-              </button>
+              </Link>
             ))}
           </div>
 
           <button
             type="button"
-            onClick={() => {
-              setLikedOnly((previous) => !previous);
-              setPage(1);
-            }}
+            aria-pressed={likedOnly}
+            onClick={handleLikedOnlyChange}
             className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-medium transition-colors ${
               likedOnly
                 ? "border border-[var(--red-soft)] bg-[var(--red-soft)] text-[#ff9bab]"
-                : "border border-[var(--frost)] text-[#a1a4a5] hover:bg-white/[0.08] hover:text-[#f0f0f0]"
+                : "border border-[var(--frost)] text-[color:var(--silver)] hover:bg-[color:var(--frost-soft)] hover:text-[color:var(--near-white)]"
             }`}
           >
             <Heart className={`h-4 w-4 ${likedOnly ? "fill-current" : ""}`} />
@@ -335,44 +513,44 @@ function GalleryPageContent() {
 
         {isLoading && (
           <div className="flex items-center justify-center py-32">
-            <Loader2 className="h-8 w-8 animate-spin text-[#a1a4a5]" />
+            <Loader2 className="h-8 w-8 animate-spin text-[color:var(--silver)]" />
           </div>
         )}
 
         {error && (
           <div className="py-32 text-center">
-            <p className="text-[#a1a4a5]">Failed to load gallery</p>
+            <p className="text-[color:var(--silver)]">Failed to load gallery</p>
           </div>
         )}
 
-        {data && data.items.length === 0 && (
+        {emptyGalleryCopy && (
           <div className="w-full">
             <div className="frost-panel mx-auto rounded-3xl px-8 py-16 text-center">
-              <ImageOff className="mx-auto mb-4 h-12 w-12 text-[#5f6568]" />
-              {likedOnly ? (
-                <>
-                  <p className="mb-2 text-[#f0f0f0]">No liked images yet</p>
-                  <p className="mb-4 text-sm text-[#a1a4a5]">
-                    Like an image to save it here.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setLikedOnly(false)}
-                    className="text-sm text-[#3b9eff] hover:underline"
-                  >
-                    View all images
-                  </button>
-                </>
-              ) : (
-                <>
-                  <p className="mb-2 text-[#f0f0f0]">No images found</p>
-                  <Link
-                    href="/upload"
-                    className="text-sm text-[#3b9eff] hover:underline"
-                  >
-                    Upload your first images
-                  </Link>
-                </>
+              <ImageOff className="mx-auto mb-4 h-12 w-12 text-[color:var(--muted)]" />
+              <p className="mb-2 text-[color:var(--near-white)]">
+                {emptyGalleryCopy.title}
+              </p>
+              {emptyGalleryCopy.subtitle && (
+                <p className="mb-4 text-sm text-[color:var(--silver)]">
+                  {emptyGalleryCopy.subtitle}
+                </p>
+              )}
+              {emptyGalleryCopy.showUploadLink && (
+                <Link
+                  href="/upload"
+                  className="text-sm text-[color:var(--blue)] hover:underline"
+                >
+                  Upload your first images
+                </Link>
+              )}
+              {emptyGalleryCopy.showClearLikedOnly && (
+                <button
+                  type="button"
+                  onClick={handleClearLikedOnly}
+                  className="text-sm text-[color:var(--blue)] hover:underline"
+                >
+                  View all images
+                </button>
               )}
             </div>
           </div>
@@ -392,7 +570,7 @@ function GalleryPageContent() {
                   >
                     <button
                       type="button"
-                      className="relative block aspect-square w-full overflow-hidden bg-white/[0.025] text-left focus:outline-none"
+                      className="relative block aspect-square w-full overflow-hidden bg-[color:var(--surface-soft)] text-left focus:outline-none"
                       onClick={() => {
                         setQuerySelectedItem(null);
                         setSelectedMediaId(item.id);
@@ -410,7 +588,7 @@ function GalleryPageContent() {
                         />
                       ) : (
                         <div
-                          className="flex h-full w-full flex-col items-center justify-center gap-2 text-[#5f6568]"
+                          className="flex h-full w-full flex-col items-center justify-center gap-2 text-[color:var(--muted)]"
                           role="img"
                           aria-label="No preview available"
                         >
@@ -425,14 +603,14 @@ function GalleryPageContent() {
                         className="absolute bottom-3 right-3"
                       />
                       <div className="absolute inset-0 grid place-items-center opacity-0 transition duration-200 group-hover:opacity-100">
-                        <span className="icon-button h-10 w-10 bg-black/[0.45] backdrop-blur-md">
+                        <span className="icon-button h-10 w-10 bg-[color:var(--overlay)] text-white backdrop-blur-md">
                           <Eye className="h-4 w-4" />
                         </span>
                       </div>
                     </button>
 
                     <div className="space-y-3 p-3">
-                      <p className="truncate text-xs font-medium text-[#f0f0f0]">
+                      <p className="truncate text-xs font-medium text-[color:var(--near-white)]">
                         {item.filename}
                       </p>
                       <div className="flex items-center gap-2">
@@ -441,7 +619,9 @@ function GalleryPageContent() {
                           onClick={() => handleToggleLike(item.id)}
                           disabled={likeMutation.isPending}
                           className={`icon-button h-8 w-8 ${
-                            item.liked ? "text-[#ff9bab]" : "text-[#a1a4a5]"
+                            item.liked
+                              ? "border-[var(--red)] bg-[var(--red-soft)] text-[color:var(--red)]"
+                              : "text-[color:var(--silver)]"
                           } ${
                             likeMutation.isPending
                               ? "cursor-not-allowed opacity-70"
@@ -461,7 +641,7 @@ function GalleryPageContent() {
                           <a
                             href={downloadUrl}
                             download={item.filename}
-                            className="icon-button h-8 w-8 text-[#a1a4a5]"
+                            className="icon-button h-8 w-8 text-[color:var(--silver)]"
                             aria-label="Download image"
                           >
                             <Download className="h-3.5 w-3.5" />
@@ -473,7 +653,7 @@ function GalleryPageContent() {
                             type="button"
                             onClick={() => reprocessMutation.mutate(item.id)}
                             disabled={reprocessMutation.isPending}
-                            className={`icon-button h-8 w-8 text-[#a1a4a5] ${
+                            className={`icon-button h-8 w-8 text-[color:var(--silver)] ${
                               reprocessMutation.isPending
                                 ? "cursor-not-allowed opacity-70"
                                 : ""
@@ -491,7 +671,7 @@ function GalleryPageContent() {
                             handleDeleteRequest(item.id, item.filename)
                           }
                           disabled={deleteMutation.isPending}
-                          className={`icon-button h-8 w-8 text-[#a1a4a5] ${
+                          className={`icon-button h-8 w-8 text-[color:var(--silver)] ${
                             deleteMutation.isPending
                               ? "cursor-not-allowed opacity-70"
                               : ""
@@ -511,18 +691,20 @@ function GalleryPageContent() {
               <div className="mt-12 flex items-center justify-center gap-6">
                 <button
                   type="button"
-                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                  onClick={() =>
+                    updatePage((current) => Math.max(1, current - 1))
+                  }
                   disabled={page === 1}
                   className="icon-button disabled:cursor-not-allowed disabled:opacity-30"
                 >
                   <ChevronLeft className="h-5 w-5" />
                 </button>
-                <span className="text-sm text-[#a1a4a5]">
+                <span className="text-sm text-[color:var(--silver)]">
                   Page {page} of {Math.ceil(data.total / limit)}
                 </span>
                 <button
                   type="button"
-                  onClick={() => setPage((current) => current + 1)}
+                  onClick={() => updatePage((current) => current + 1)}
                   disabled={page >= Math.ceil(data.total / limit)}
                   className="icon-button disabled:cursor-not-allowed disabled:opacity-30"
                 >
@@ -558,10 +740,10 @@ function GalleryPageContent() {
       {deleteTarget && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 px-4 backdrop-blur-lg">
           <div className="frost-panel page-enter w-full max-w-sm rounded-3xl p-6">
-            <h2 className="text-lg font-semibold text-[#f0f0f0]">
+            <h2 className="text-lg font-semibold text-[color:var(--near-white)]">
               Delete image?
             </h2>
-            <p className="mt-2 text-sm text-[#a1a4a5]">
+            <p className="mt-2 text-sm text-[color:var(--silver)]">
               {deleteTarget.filename
                 ? `"${deleteTarget.filename}"`
                 : "This image"}{" "}
