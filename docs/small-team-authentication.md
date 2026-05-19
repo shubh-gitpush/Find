@@ -1,0 +1,145 @@
+# Small-Team Authentication (Instance Sharing)
+
+## Summary
+
+Find should support a lightweight single-admin + multi-user model for trusted small-team or household deployments while preserving the local-first philosophy. The machine hosting Find acts as the "admin" and controls storage, database, and shared access. The feature is an opt-in, self-hosted instance-sharing model rather than a cloud multi-tenant identity system.
+
+## Goals
+
+- Keep storage and indexing local to the admin-hosted instance.
+- Enable trusted users to authenticate and use the same Find instance.
+- Keep authentication and user-management intentionally lightweight and self-hosted.
+- Track which authenticated user uploaded each media item.
+- Require admin approval for destructive actions (e.g., deletions).
+
+## UX: "Instance" Tab
+
+Place a new **Instance** tab in the UI with two sections: **Create an Instance** and **Join an Instance**.
+
+Create an Instance (admin flows)
+- Admin creates a shared instance from the hosting machine. Creating an instance:
+  - Marks the backend as running in shared mode.
+  - Sets an admin user (local single admin account).
+  - Optionally configures a friendly instance name.
+- Admin can manually add trusted users (username + password) directly from UI.
+- Admin can generate:
+  - A short-lived invite code (6–8 chars) that users can paste into "Join an Instance"; or
+  - A shareable URL containing a one-time token that points to the admin's public address (if reachable).
+- Admin sees a pending join requests list (approve/reject), and a list of active users and their roles.
+
+Join an Instance (user flows)
+- A user clicks "Join an Instance" and enters either an invite code or a shareable link.
+- They submit a username + password and an optional display name.
+- The instance creates a join request which the admin reviews and approves or denies (or if invite is pre-approved, account is created automatically).
+- Once approved, the user can sign in and interact with the shared instance.
+
+## Authentication & Accounts
+
+Minimal user model (example fields):
+- `id` (int)
+- `username` (string, unique)
+- `display_name` (string)
+- `password_hash` (string)
+- `is_admin` (bool)
+- `created_at`, `last_login`
+
+Notes:
+- Passwords stored as bcrypt (or passlib) hashes.
+- Sessions can be short-lived tokens/cookies served by the local backend.
+- Keep default instance mode as single-user if no admin action taken.
+
+## Data & Metadata changes
+
+- Add `users` table as above.
+- Update `media` table to include `uploader_user_id` (nullable) to record which authenticated user uploaded the media.
+- Add `deletion_requests` table to track deletion petitions from non-admins:
+  - `id`, `media_id`, `requester_user_id`, `reason`, `created_at`, `approved_by`, `approved_at`, `status`.
+- Optional `audit_log` table for admin actions (uploads, approvals, deletions).
+
+## Possible API Endpoints (proposal)
+
+- POST `/api/instance/create` — create instance + initial admin account (local only).
+- POST `/api/instance/invite` — (admin) create invite code / link with TTL and optional auto-approve flag.
+- POST `/api/instance/join` — (user) submit invite code or token + username/password (creates join request or account if auto-approved).
+- GET `/api/instance/requests` — (admin) list pending join requests.
+- POST `/api/instance/requests/{id}/approve` — (admin) approve request.
+- POST `/api/instance/requests/{id}/reject` — (admin) reject request.
+- POST `/api/auth/login` — username/password -> session token / cookie.
+- POST `/api/auth/logout` — end session.
+- GET `/api/users/me` — current user info.
+- POST `/api/image/{media_id}/delete-request` — user requests deletion (creates deletion request).
+- GET `/api/admin/deletion-requests` — admin lists pending deletion requests.
+- POST `/api/admin/deletion-requests/{id}/approve` — admin approves deletion (permanently delete file and record).
+
+## Behavioral notes
+
+- Uploads from authenticated users attach `uploader_user_id` to `Media` records.
+- Public access remains off by default: `MINIO_PUBLIC_READ` remains a separate config option; enabling public MinIO remains explicit and admin-controlled.
+- Admin-only actions include: adding/removing users, approving join requests, approving deletions, and toggling instance shared mode.
+
+## Security & Privacy considerations
+
+- Default to local-only deployment: instance sharing via invite links only if the admin exposes the instance (e.g., through NAT, reverse proxy, or by running on a reachable host).
+- Use HTTPS for any publicly reachable endpoints; document how to configure TLS (reverse proxy / local certs).
+- Invite tokens must be single-use or short-lived and stored hashed on disk.
+- Rate-limit join attempts and signups.
+- Store password hashes with a strong algorithm (bcrypt/argon2) and a proper work factor.
+- Do not send any secrets in clear text over logs or email.
+
+## Admin UX & Operational notes
+
+- Keep the admin UI simple: approve/deny list, generate invites, list active sessions, list users, and viewing deletion requests.
+- Provide a lightweight CLI or UI to export the user list and audit logs.
+- Provide config flags for ``MAX_INVITE_TTL``, `AUTO_APPROVE_INVITES`, and `ALLOW_PUBLIC_ACCESS`.
+
+## Edge cases & optional features
+
+- Guest accounts: create ephemeral accounts with limited rights (view-only) for casual access.
+- Role expansion: `editor` vs `viewer` roles for finer-grained control.
+- Device-pairing flow for mobile: a QR code with invite token that mobile device can scan.
+- LDAP/SSO: intentionally omitted; this proposal focuses on self-hosted, local-first simplicity.
+
+## Implementation Complexity & Migration Considerations
+
+This proposal is intended to remain low-to-moderate in implementation complexity.
+
+Possible implementation areas may include:
+
+1. Lightweight users model and migrations.
+2. Session/token authentication middleware.
+3. Invite generation and join-request workflows.
+4. Instance management UI pages.
+5. Metadata additions for uploader tracking and deletion requests.
+
+Backward compatibility should remain straightforward by allowing pre-existing media entries to continue functioning without uploader metadata.
+
+## Out of Scope
+
+This proposal intentionally avoids introducing enterprise or SaaS-oriented authentication complexity.
+
+The following items remain out of scope:
+
+- Public multi-tenant SaaS deployments
+- Enterprise SSO systems
+- Billing and subscription systems
+- Cloud-first identity providers
+- Large-scale enterprise RBAC
+- Centralized cloud-hosted user management
+- Mandatory third-party authentication systems
+
+The goal is to preserve Find’s lightweight, self-hosted, and local-first architecture while enabling trusted small-team collaboration.
+
+## Why This Aligns with Find’s Design
+
+This proposal aligns with Find’s local-first philosophy by:
+
+- keeping user data and images on admin-controlled infrastructure,
+- avoiding centralized cloud identity systems,
+- enabling practical collaboration for trusted small teams,
+- preserving privacy and local ownership,
+- and avoiding unnecessary SaaS-oriented operational complexity.
+
+## Future Implementation Considerations
+
+This document focuses on architectural direction and deployment expectations rather than immediate implementation details.
+Authentication middleware, database migrations, UI integration, invite workflows, and session handling can be explored in future implementation-focused issues and pull requests.
