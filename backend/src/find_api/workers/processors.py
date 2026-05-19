@@ -14,6 +14,17 @@ from find_api.ml.mock_embedder import get_mock_embedder
 
 logger = logging.getLogger(__name__)
 
+PERSON_OBJECT_LABELS = {
+    "person",
+    "people",
+    "human",
+    "man",
+    "woman",
+    "boy",
+    "girl",
+    "face",
+}
+
 
 def extract_image_metadata(
     image: Image.Image,
@@ -133,6 +144,28 @@ def generate_hybrid_embedding(
         raise
 
 
+def has_person_object(metadata: Dict[str, Any]) -> bool:
+    """Return true when object detection found a person-like object."""
+    objects = metadata.get("objects") or []
+
+    for obj in objects:
+        if not isinstance(obj, dict):
+            continue
+
+        label = (
+            str(obj.get("class") or obj.get("name") or obj.get("label") or "")
+            .strip()
+            .lower()
+        )
+        if not label:
+            continue
+
+        if label in PERSON_OBJECT_LABELS:
+            return True
+
+    return False
+
+
 def detect_and_store_faces(image: Image.Image, media_id: int, db) -> int:
     """
     Detect faces in image and store them in the database.
@@ -177,8 +210,8 @@ def detect_and_store_faces(image: Image.Image, media_id: int, db) -> int:
         logger.info("Stored %s faces for media %s", len(faces), media_id)
         return len(faces)
 
-    except Exception as e:
-        logger.error("Face detection failed for media %s: %s", media_id, e)
+    except Exception:
+        logger.exception("Face detection failed for media %s", media_id)
         db.rollback()
         # Don't raise - face detection failure should not fail the whole job
         return 0

@@ -92,12 +92,20 @@ def analyze_image(media_id: int):
 
         db.commit()
 
-        # Detect faces and store them in the faces table
-        # This runs after the main image processing is complete
-        from find_api.workers.processors import detect_and_store_faces
+        from find_api.workers.processors import (
+            detect_and_store_faces,
+            has_person_object,
+        )
 
-        face_count = detect_and_store_faces(image, media_id, db)
-        logger.info("Face detection complete: %s faces found", face_count)
+        if has_person_object(metadata):
+            set_stage(job, "detecting faces")
+            face_count = detect_and_store_faces(image, media_id, db)
+            logger.info("Face detection complete: %s faces found", face_count)
+        else:
+            logger.info(
+                "Skipping face detection for media %s: no person object detected",
+                media_id,
+            )
 
         set_stage(job, "clustering queued")
 
