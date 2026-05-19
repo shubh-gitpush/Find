@@ -103,6 +103,7 @@ export interface ClusterInfo {
 export interface ClustersResponse {
   clusters: ClusterInfo[];
   total: number;
+  min_cluster_size?: number;
 }
 
 export interface ClusterDetail {
@@ -142,6 +143,7 @@ export interface SearchResponse {
 export interface JobStatus {
   job_id: string;
   status: "queued" | "started" | "finished" | "failed";
+  stage?: string;
   created_at?: string | null;
   started_at?: string | null;
   ended_at?: string | null;
@@ -282,6 +284,33 @@ export const triggerClustering = async (): Promise<ClusteringJobResponse> => {
   const response = await api.post<ClusteringJobResponse>("/api/cluster/run");
   return response.data;
 };
+
+export function extractErrorMessage(error: unknown, fallback: string): string {
+  if (axios.isAxiosError(error)) {
+    const data = error.response?.data;
+    if (typeof data?.detail === "string" && data.detail.trim()) {
+      return data.detail.trim();
+    }
+    if (
+      typeof data?.detail === "object" &&
+      typeof data.detail?.message === "string" &&
+      data.detail.message.trim()
+    ) {
+      return data.detail.message.trim();
+    }
+    if (typeof data?.message === "string" && data.message.trim()) {
+      return data.message.trim();
+    }
+    if (typeof data?.error === "string" && data.error.trim()) {
+      return data.error.trim();
+    }
+    if (typeof data === "string" && data.trim()) {
+      return data.trim();
+    }
+  }
+  return fallback;
+}
+
 // ─── People / Face Recognition API ───────────────────────────────────────────
 
 export interface PersonItem {
