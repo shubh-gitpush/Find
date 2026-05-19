@@ -86,6 +86,50 @@ function getDisplayStage(item: UploadListItem) {
   return item.processingStage ?? item.processingState ?? "queued";
 }
 
+const STAGE_PROGRESS: Record<string, number> = {
+  queued: 8,
+  started: 16,
+  processing: 20,
+  "loading image": 22,
+  "extracting exif": 34,
+  "generating mock metadata": 48,
+  "detecting objects": 48,
+  "generating caption": 62,
+  "running ocr": 74,
+  "generating embedding": 88,
+  "indexing complete": 96,
+  "detecting faces": 96,
+  "clustering queued": 98,
+  indexed: 100,
+  failed: 100,
+};
+
+function normalizeStage(stage?: string) {
+  return stage?.trim().toLowerCase();
+}
+
+function getItemProgress(item: UploadListItem): number {
+  if (item.status === "failed" || item.processingState === "failed") {
+    return 100;
+  }
+  if (item.processingState === "indexed") {
+    return 100;
+  }
+
+  const stage = normalizeStage(item.processingStage);
+  const stageProgress = stage ? STAGE_PROGRESS[stage] : undefined;
+  if (stageProgress !== undefined) {
+    return stageProgress;
+  }
+  if (item.processingState === "processing" || item.jobStatus === "started") {
+    return STAGE_PROGRESS.processing ?? 20;
+  }
+  if (item.processingState === "queued" || item.jobStatus === "queued") {
+    return STAGE_PROGRESS.queued ?? 8;
+  }
+  return 0;
+}
+
 function getStatusClasses(item: UploadListItem) {
   if (item.status === "duplicate") {
     return "accent-badge status-pending";
@@ -361,20 +405,16 @@ export default function UploadPage() {
     [uploadedFiles],
   );
 
-  const completedUploads = useMemo(
-    () =>
-      trackedUploads.filter(
-        (item) =>
-          item.processingState === "indexed" ||
-          item.processingState === "failed",
-      ),
-    [trackedUploads],
-  );
-
   const progressPercent =
     trackedUploads.length > 0
-      ? Math.round((completedUploads.length / trackedUploads.length) * 100)
-      : 0;
+      ? Math.round(
+          trackedUploads.reduce((total, item) => {
+            return total + getItemProgress(item);
+          }, 0) / trackedUploads.length,
+        )
+      : isUploading
+        ? (STAGE_PROGRESS.queued ?? 8)
+        : 0;
 
   const progressLabel = isUploading
     ? "Uploading"
