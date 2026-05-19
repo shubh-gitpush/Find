@@ -6,6 +6,7 @@ import json
 import logging
 from typing import Literal, Optional
 from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
@@ -130,8 +131,6 @@ def get_image_detail(media_id: int, db: Session = Depends(get_db)):
     media = db.query(Media).filter(Media.id == media_id).first()
 
     if not media:
-        from fastapi import HTTPException
-
         raise HTTPException(404, "Image not found")
 
     metadata = normalize_metadata(media.metadata_json)
@@ -148,7 +147,9 @@ def get_image_detail(media_id: int, db: Session = Depends(get_db)):
         "width": media.width,
         "height": media.height,
         "created_at": media.created_at.isoformat() if media.created_at else None,
-        "processed_at": media.processed_at.isoformat() if media.processed_at else None,
+        "processed_at": media.processed_at.isoformat()
+        if media.processed_at
+        else None,
         "cluster_id": media.cluster_id,
         "metadata": metadata,
         "caption": metadata.get("caption", ""),
@@ -166,6 +167,24 @@ def get_image_detail(media_id: int, db: Session = Depends(get_db)):
         response["url"] = None
 
     return response
+
+
+@router.get("/image/{media_id}/thumbnail")
+def get_image_thumbnail(media_id: int, db: Session = Depends(get_db)):
+    """
+    Get a redirect to the image file for use as a thumbnail.
+    Returns a redirect to the MinIO presigned URL.
+    """
+    media = db.query(Media).filter(Media.id == media_id).first()
+    if not media:
+        raise HTTPException(404, "Image not found")
+
+    try:
+        url = get_file_url(media.minio_key)
+    except Exception:
+        raise HTTPException(500, "Could not generate image URL")
+
+    return RedirectResponse(url=url)
 
 
 @router.post("/image/{media_id}/like")
@@ -200,7 +219,8 @@ def reprocess_image(media_id: int, db: Session = Depends(get_db)):
     if media.status != "failed" and not is_indexed_incomplete:
         raise HTTPException(
             400,
-            "Reprocess is only available for failed images or indexed images with incomplete metadata.",
+            "Reprocess is only available for failed images or indexed images "
+            "with incomplete metadata.",
         )
 
     media.status = "pending"
@@ -232,17 +252,23 @@ def delete_image(media_id: int, db: Session = Depends(get_db)):
     try:
         delete_file(media.minio_key)
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(500, f"Failed to delete file from storage: {exc}") from exc
+        raise HTTPException(
+            500, f"Failed to delete file from storage: {exc}"
+        ) from exc
 
     db.delete(media)
     db.flush()
 
-    clusters = db.query(Cluster).filter(Cluster.member_ids.contains([media_id])).all()
+    clusters = db.query(Cluster).filter(
+        Cluster.member_ids.contains([media_id])
+    ).all()
     for cluster in clusters:
         current_members = cluster.member_ids or []
         if media_id in current_members:
             cluster.member_ids = [
-                member_id for member_id in current_members if member_id != media_id
+                member_id
+                for member_id in current_members
+                if member_id != media_id
             ]
             cluster.member_count = len(cluster.member_ids)
 
