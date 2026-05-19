@@ -3,15 +3,9 @@
  * File: frontend/src/__tests__/gallery-url-state.test.tsx
  *
  * Covers issue #93 acceptance criteria:
- *   1. Status tab UI renders correctly
- *   2. Liked-only filter UI renders correctly
- *   3. Media deep-link (?media=<id>) opens the correct item
- *
- * NOTE: The current page.tsx reads ?media from the URL but manages
- * ?status and ?liked as local React state only. Tests for URL-based
- * restoration of those filters are marked with todo() — they will be
- * activated once issue #89 (persist gallery tab and liked filter in URL)
- * is merged into this branch.
+ *   1. Status tab state is restored from the URL
+ *   2. Liked-only filter state is restored from the URL
+ *   3. Media deep-link (?media=<id>) still works with filter params
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -98,15 +92,32 @@ const MOCK_ITEMS = [
   },
 ];
 
+type GalleryQuery = {
+  page?: number;
+  limit?: number;
+  status?: string;
+  liked?: boolean;
+};
+
 vi.mock("@/lib/api", () => ({
-  getGallery: vi.fn(() =>
-    Promise.resolve({
-      items: MOCK_ITEMS,
-      total: MOCK_ITEMS.length,
-      page: 1,
-      limit: 24,
-    }),
-  ),
+  getGallery: vi.fn((query?: GalleryQuery) => {
+    const filteredItems = MOCK_ITEMS.filter((item) => {
+      if (query?.status && item.status !== query.status) {
+        return false;
+      }
+      if (query?.liked && !item.liked) {
+        return false;
+      }
+      return true;
+    });
+
+    return Promise.resolve({
+      items: filteredItems,
+      total: filteredItems.length,
+      page: query?.page ?? 1,
+      limit: query?.limit ?? 24,
+    });
+  }),
   getImageDetail: vi.fn((id: number) => {
     const item = MOCK_ITEMS.find((i) => i.id === id);
     if (!item) return Promise.reject(new Error("Not found"));
@@ -236,16 +247,68 @@ describe("Gallery — URL-state restoration", () => {
       });
     });
 
-    // These will pass once issue #89 is implemented
-    it.todo(
-      "restores Processing tab from ?status=processing and calls getGallery with status:processing",
-    );
-    it.todo(
-      "restores Failed tab from ?status=failed and calls getGallery with status:failed",
-    );
-    it.todo(
-      "restores Indexed tab from ?status=indexed and calls getGallery with status:indexed",
-    );
+    it("restores Processing tab from ?status=processing and calls getGallery with status:processing", async () => {
+      const { getGallery } = await import("@/lib/api");
+      setParams({ status: "processing" });
+
+      render(<GalleryPage />, { wrapper: makeWrapper() });
+
+      await waitFor(() => {
+        expect(getGallery).toHaveBeenCalledWith(
+          expect.objectContaining({ status: "processing" }),
+        );
+        expect(
+          screen.getByRole("button", { name: /view mountain\.jpg/i }),
+        ).toBeInTheDocument();
+      });
+
+      expect(
+        screen.queryByRole("button", { name: /view sunset\.jpg/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("restores Failed tab from ?status=failed and calls getGallery with status:failed", async () => {
+      const { getGallery } = await import("@/lib/api");
+      setParams({ status: "failed" });
+
+      render(<GalleryPage />, { wrapper: makeWrapper() });
+
+      await waitFor(() => {
+        expect(getGallery).toHaveBeenCalledWith(
+          expect.objectContaining({ status: "failed" }),
+        );
+        expect(
+          screen.getByRole("button", { name: /view beach\.jpg/i }),
+        ).toBeInTheDocument();
+      });
+
+      expect(
+        screen.queryByRole("button", { name: /view sunset\.jpg/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("restores Indexed tab from ?status=indexed and calls getGallery with status:indexed", async () => {
+      const { getGallery } = await import("@/lib/api");
+      setParams({ status: "indexed" });
+
+      render(<GalleryPage />, { wrapper: makeWrapper() });
+
+      await waitFor(() => {
+        expect(getGallery).toHaveBeenCalledWith(
+          expect.objectContaining({ status: "indexed" }),
+        );
+        expect(
+          screen.getByRole("button", { name: /view sunset\.jpg/i }),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByRole("button", { name: /view forest\.jpg/i }),
+        ).toBeInTheDocument();
+      });
+
+      expect(
+        screen.queryByRole("button", { name: /view mountain\.jpg/i }),
+      ).not.toBeInTheDocument();
+    });
   });
 
   // ── 2. Liked-only filter UI ───────────────────────────────────────────────
@@ -274,12 +337,46 @@ describe("Gallery — URL-state restoration", () => {
       });
     });
 
-    // These will pass once issue #89 is implemented
-    it.todo(
-      "restores liked-only mode from ?liked=true and calls getGallery with liked:true",
-    );
-    it.todo("shows 'Liked' button text when ?liked=true is in the URL");
-    it.todo("shows only liked items in gallery when ?liked=true is in the URL");
+    it("restores liked-only mode from ?liked=true and calls getGallery with liked:true", async () => {
+      const { getGallery } = await import("@/lib/api");
+      setParams({ liked: "true" });
+
+      render(<GalleryPage />, { wrapper: makeWrapper() });
+
+      await waitFor(() => {
+        expect(getGallery).toHaveBeenCalledWith(
+          expect.objectContaining({ liked: true }),
+        );
+      });
+    });
+
+    it("shows 'Liked' button text when ?liked=true is in the URL", async () => {
+      setParams({ liked: "true" });
+
+      render(<GalleryPage />, { wrapper: makeWrapper() });
+
+      await waitFor(() => {
+        expect(
+          screen.getByRole("button", { name: /^liked$/i }),
+        ).toBeInTheDocument();
+      });
+    });
+
+    it("shows only liked items in gallery when ?liked=true is in the URL", async () => {
+      setParams({ liked: "true" });
+
+      render(<GalleryPage />, { wrapper: makeWrapper() });
+
+      await waitFor(() => {
+        expect(
+          screen.getByRole("button", { name: /view forest\.jpg/i }),
+        ).toBeInTheDocument();
+      });
+
+      expect(
+        screen.queryByRole("button", { name: /view sunset\.jpg/i }),
+      ).not.toBeInTheDocument();
+    });
   });
 
   // ── 3. Media deep-link (?media=) — already implemented in page.tsx ────────
@@ -371,8 +468,21 @@ describe("Gallery — URL-state restoration", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
 
-    it.todo(
-      "media deep-link still works when combined with ?status and ?liked filter params",
-    );
+    it("media deep-link still works when combined with ?status and ?liked filter params", async () => {
+      const { getGallery } = await import("@/lib/api");
+      setParams({ media: "4", status: "indexed", liked: "true" });
+
+      render(<GalleryPage />, { wrapper: makeWrapper() });
+
+      await waitFor(() => {
+        expect(getGallery).toHaveBeenCalledWith(
+          expect.objectContaining({ status: "indexed", liked: true }),
+        );
+        expect(screen.getByRole("dialog")).toBeInTheDocument();
+        expect(screen.getByTestId("modal-filename")).toHaveTextContent(
+          "forest.jpg",
+        );
+      });
+    });
   });
 });
