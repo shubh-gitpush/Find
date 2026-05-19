@@ -13,7 +13,7 @@ import {
   X,
 } from "lucide-react";
 import Image from "next/image";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   ImagePreviewModal,
@@ -43,6 +43,13 @@ function PersonCard({
   const [isEditing, setIsEditing] = useState(false);
   const [nameInput, setNameInput] = useState(person.name ?? "");
 
+  // Sync input state if name changes or editing gets cancelled
+  useEffect(() => {
+    if (!isEditing) {
+      setNameInput(person.name ?? "");
+    }
+  }, [person.name, isEditing]);
+
   const submitName = () => {
     const trimmed = nameInput.trim();
     if (!trimmed) {
@@ -65,46 +72,48 @@ function PersonCard({
   });
 
   return (
-    <article className="frost-panel card-hover flex flex-col rounded-3xl p-5">
-      {/* Sample face thumbnails — fixed height area */}
-      <button
-        type="button"
-        className="mb-4 grid w-full cursor-pointer grid-cols-2 gap-2 text-left"
-        onClick={onClick}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") onClick();
-        }}
-        aria-label={`View photos of ${person.name ?? "unknown person"}`}
-      >
-        {person.sample_media_ids.length > 0 ? (
-          person.sample_media_ids.slice(0, 4).map((mediaId) => (
-            <div
-              key={mediaId}
-              className="relative aspect-square overflow-hidden rounded-2xl border border-[var(--frost)] bg-[color:var(--surface-soft)]"
-            >
-              <Image
-                src={`${API_BASE_URL}/api/image/${mediaId}/thumbnail`}
-                alt="Person photo"
-                fill
-                className="object-cover"
-                sizes="(max-width: 768px) 25vw, 10vw"
-                unoptimized
-              />
-            </div>
-          ))
-        ) : (
-          <div className="col-span-2 flex aspect-square items-center justify-center rounded-2xl border border-[var(--frost)] bg-[color:var(--surface-soft)] text-[color:var(--muted)]">
-            <ImageOff className="h-8 w-8" />
-          </div>
-        )}
-      </button>
+    <article className="frost-panel card-hover flex h-full flex-col justify-between rounded-3xl p-5 bg-card text-card-foreground border border-border">
+      <div>
+        {/* Sample face thumbnails — Fixed 4-slot grid layout schema */}
+        <button
+          type="button"
+          className="mb-4 grid aspect-square w-full cursor-pointer grid-cols-2 gap-2 text-left overflow-hidden rounded-2xl"
+          onClick={onClick}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") onClick();
+          }}
+          aria-label={`View photos of ${person.name?.trim() || "unknown person"}`}
+        >
+          {[0, 1, 2, 3].map((index) => {
+            const mediaId = person.sample_media_ids[index];
+            return (
+              <div
+                key={mediaId ? mediaId : `empty-${person.id}-${index}`}
+                className="relative h-full w-full overflow-hidden rounded-xl border border-border bg-muted/40"
+              >
+                {mediaId ? (
+                  <Image
+                    src={`${API_BASE_URL}/api/image/${mediaId}/thumbnail`}
+                    alt="Person photo"
+                    fill
+                    className="object-cover"
+                    sizes="(max-width: 768px) 25vw, 10vw"
+                    unoptimized
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-muted-foreground/40">
+                    <ImageOff className="h-4 w-4" />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </button>
 
-      {/* Bottom controls — pinned, consistent height */}
-      <div className="mt-auto flex flex-col gap-3">
-        {/* Person name + edit */}
-        <div className="flex min-h-[2rem] items-center gap-2">
+        {/* Person name + edit input tracking row */}
+        <div className="mb-3 flex min-h-[2.25rem] items-center gap-2 min-w-0">
           {isEditing ? (
-            <div className="flex w-full items-center gap-2">
+            <div className="flex flex-1 items-center gap-1.5 w-full overflow-hidden">
               <input
                 type="text"
                 value={nameInput}
@@ -114,7 +123,7 @@ function PersonCard({
                   if (e.key === "Escape") setIsEditing(false);
                 }}
                 placeholder="Enter a name..."
-                className="min-w-0 flex-1 rounded-xl border border-[var(--frost)] bg-[color:var(--surface-soft)] px-3 py-1.5 text-sm text-[color:var(--near-white)] outline-none focus:border-[color:var(--blue)]"
+                className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-1.5 text-sm text-foreground outline-none focus:border-primary"
               />
               <button
                 type="button"
@@ -131,7 +140,10 @@ function PersonCard({
               </button>
               <button
                 type="button"
-                onClick={() => setIsEditing(false)}
+                onClick={() => {
+                  setNameInput(person.name ?? "");
+                  setIsEditing(false);
+                }}
                 className="icon-button shrink-0"
                 aria-label="Cancel"
               >
@@ -140,11 +152,11 @@ function PersonCard({
             </div>
           ) : (
             <>
-              <p className="flex-1 truncate text-base font-medium text-[color:var(--near-white)]">
+              <p className="flex-1 truncate text-base font-medium text-foreground">
                 {person.name?.trim() ? (
                   person.name
                 ) : (
-                  <span className="text-[color:var(--muted)]">
+                  <span className="text-muted-foreground font-normal">
                     Unknown person
                   </span>
                 )}
@@ -160,20 +172,20 @@ function PersonCard({
             </>
           )}
         </div>
+      </div>
 
-        {/* Face count + view button */}
-        <div className="flex items-center justify-between">
-          <span className="accent-badge status-default">
-            {person.face_count} {person.face_count === 1 ? "photo" : "photos"}
-          </span>
-          <button
-            type="button"
-            onClick={onClick}
-            className="frost-button px-3 py-1.5 text-xs font-medium"
-          >
-            View photos
-          </button>
-        </div>
+      {/* Face count edge alignment row */}
+      <div className="mt-auto flex items-center justify-between pt-2 border-t border-border/40">
+        <span className="accent-badge text-xs text-muted-foreground">
+          {person.face_count} {person.face_count === 1 ? "photo" : "photos"}
+        </span>
+        <button
+          type="button"
+          onClick={onClick}
+          className="frost-button px-3 py-1.5 text-xs font-medium"
+        >
+          View photos
+        </button>
       </div>
     </article>
   );
@@ -215,22 +227,21 @@ export default function PeoplePage() {
   });
 
   return (
-    <div className="page-shell">
+    <div className="page-shell bg-background text-foreground">
       <div className="container-shell py-10 md:py-14">
         {/* Page header */}
-        <div className="page-enter mb-10 flex flex-col gap-6 border-b border-[var(--frost)] pb-8 md:flex-row md:items-end md:justify-between">
+        <div className="page-enter mb-10 flex flex-col gap-6 border-b border-border pb-8 md:flex-row md:items-end md:justify-between">
           <div className="max-w-2xl">
-            <h1 className="section-heading mb-4 text-5xl font-medium md:text-6xl">
+            <h1 className="section-heading mb-4 text-5xl font-medium md:text-6xl text-foreground">
               People
             </h1>
-            <p className="muted-copy text-sm leading-6">
+            <p className="muted-copy text-sm leading-6 text-muted-foreground">
               Photos grouped by person, detected and clustered entirely on your
               device.
             </p>
-            {/* Privacy note */}
-            <div className="mt-4 flex items-center gap-2 rounded-2xl border border-[var(--frost)] bg-[color:var(--surface-soft)] px-4 py-3">
-              <Shield className="h-4 w-4 shrink-0 text-[color:var(--blue)]" />
-              <p className="text-xs text-[color:var(--silver)]">
+            <div className="mt-4 flex items-center gap-2 rounded-2xl border border-border bg-muted/30 px-4 py-3">
+              <Shield className="h-4 w-4 shrink-0 text-primary" />
+              <p className="text-xs text-muted-foreground">
                 All face data is processed and stored locally on your device. No
                 images or face data are ever sent to any external service.
               </p>
@@ -266,28 +277,30 @@ export default function PeoplePage() {
           </div>
         </div>
 
-        {/* Loading */}
+        {/* Loading state rendering layout */}
         {isLoading && (
           <div className="flex items-center justify-center py-32">
-            <Loader2 className="h-8 w-8 animate-spin text-[color:var(--silver)]" />
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
         )}
 
-        {/* Error */}
+        {/* Error State */}
         {error && (
-          <div className="frost-panel mx-auto max-w-md rounded-3xl px-8 py-14 text-center">
-            <p className="text-[#ff9bab]">Failed to load people</p>
+          <div className="frost-panel mx-auto max-w-md rounded-3xl px-8 py-14 text-center border border-destructive/50 bg-destructive/5">
+            <p className="text-destructive font-medium">
+              Failed to load people
+            </p>
           </div>
         )}
 
-        {/* Empty state */}
+        {/* Empty state container dashboard */}
         {people && people.length === 0 && (
-          <div className="frost-panel mx-auto max-w-md rounded-3xl px-8 py-14 text-center">
-            <Users className="mx-auto mb-4 h-10 w-10 text-[color:var(--muted)]" />
-            <p className="mb-2 text-[color:var(--near-white)]">
+          <div className="frost-panel mx-auto max-w-md rounded-3xl px-8 py-14 text-center border border-border bg-card">
+            <Users className="mx-auto mb-4 h-10 w-10 text-muted-foreground" />
+            <p className="mb-2 text-foreground font-medium">
               No people found yet
             </p>
-            <p className="mb-6 text-sm leading-6 text-[color:var(--silver)]">
+            <p className="mb-6 text-sm leading-6 text-muted-foreground">
               Upload photos with faces, then run face clustering.
             </p>
             <button
@@ -302,23 +315,23 @@ export default function PeoplePage() {
           </div>
         )}
 
-        {/* People grid */}
+        {/* People dashboard visualization matrix */}
         {people && people.length > 0 && (
           <div className="page-enter">
             <div className="mb-8 grid gap-3 sm:grid-cols-2">
-              <div className="frost-panel rounded-2xl p-4">
-                <p className="text-xs uppercase text-[color:var(--muted)]">
+              <div className="frost-panel rounded-2xl p-4 border border-border bg-card">
+                <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
                   People found
                 </p>
-                <p className="mt-2 text-3xl font-light text-[color:var(--near-white)]">
+                <p className="mt-2 text-3xl font-light text-foreground">
                   {people.length}
                 </p>
               </div>
-              <div className="frost-panel rounded-2xl p-4">
-                <p className="text-xs uppercase text-[color:var(--muted)]">
+              <div className="frost-panel rounded-2xl p-4 border border-border bg-card">
+                <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
                   Total faces
                 </p>
-                <p className="mt-2 text-3xl font-light text-[color:var(--near-white)]">
+                <p className="mt-2 text-3xl font-light text-foreground">
                   {people.reduce((sum, p) => sum + p.face_count, 0)}
                 </p>
               </div>
@@ -340,45 +353,46 @@ export default function PeoplePage() {
         )}
       </div>
 
-      {/* Person detail modal */}
+      {/* Person detail sub-gallery display modal */}
       {selectedPersonId !== null && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 backdrop-blur-xl"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-md"
           role="dialog"
           aria-modal="true"
           aria-labelledby="person-modal-title"
         >
-          <div className="frost-panel page-enter relative max-h-[90dvh] w-full max-w-6xl overflow-hidden rounded-3xl bg-[color:var(--void)]">
+          <div className="frost-panel page-enter relative max-h-[90dvh] w-full max-w-6xl overflow-hidden rounded-3xl bg-card border border-border shadow-2xl">
             <button
               type="button"
               onClick={() => setSelectedPersonId(null)}
-              className="icon-button absolute right-4 top-4 z-20 bg-[color:var(--overlay)] backdrop-blur-md"
+              className="icon-button absolute right-4 top-4 z-20 bg-background/80 border border-border hover:bg-accent text-foreground"
               aria-label="Close"
             >
               <X className="h-4 w-4" />
             </button>
 
-            <div className="border-b border-[var(--frost)] px-6 py-5">
+            <div className="border-b border-border px-6 py-5 bg-muted/20">
               <h2
                 id="person-modal-title"
-                className="text-xl font-medium text-[color:var(--near-white)]"
+                className="text-xl font-medium text-foreground"
               >
-                {selectedPersonQuery.data?.person_name ?? "Unknown person"}
+                {selectedPersonQuery.data?.person_name?.trim() ||
+                  "Unknown person"}
               </h2>
-              <p className="mt-1 text-sm text-[color:var(--silver)]">
+              <p className="mt-1 text-sm text-muted-foreground">
                 All photos containing this person.
               </p>
             </div>
 
-            <div className="max-h-[calc(90dvh-88px)] overflow-y-auto p-6">
+            <div className="max-h-[calc(90dvh-88px)] overflow-y-auto p-6 bg-background">
               {selectedPersonQuery.isLoading && (
                 <div className="flex items-center justify-center py-24">
-                  <Loader2 className="h-8 w-8 animate-spin text-[color:var(--silver)]" />
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
               )}
 
               {selectedPersonQuery.isError && (
-                <div className="py-16 text-center text-[#ff9bab]">
+                <div className="py-16 text-center text-destructive font-medium">
                   Failed to load photos.
                 </div>
               )}
@@ -395,21 +409,21 @@ export default function PeoplePage() {
                           filename: `Photo ${img.media_id}`,
                         })
                       }
-                      className="frost-panel card-hover overflow-hidden rounded-3xl text-left"
+                      className="frost-panel card-hover overflow-hidden rounded-3xl text-left bg-card border border-border group"
                       aria-label={`Preview photo ${img.media_id}`}
                     >
-                      <div className="relative aspect-square bg-[color:var(--surface-soft)]">
+                      <div className="relative aspect-square bg-muted/40 overflow-hidden">
                         <Image
                           src={`${API_BASE_URL}/api/image/${img.media_id}/thumbnail`}
                           alt="Photo"
                           fill
-                          className="object-cover"
+                          className="object-cover transition-transform duration-300 group-hover:scale-105"
                           sizes="(max-width: 768px) 50vw, 25vw"
                           unoptimized
                         />
                       </div>
-                      <div className="p-3">
-                        <p className="text-xs text-[color:var(--silver)]">
+                      <div className="p-3 bg-muted/10 border-t border-border/40">
+                        <p className="text-xs text-muted-foreground">
                           {img.faces.length}{" "}
                           {img.faces.length === 1 ? "face" : "faces"} detected
                         </p>
@@ -423,7 +437,7 @@ export default function PeoplePage() {
         </div>
       )}
 
-      {/* Reuse existing ImagePreviewModal for full image preview */}
+      {/* Linked Image Preview Modal Context Integration */}
       {previewMedia && (
         <ImagePreviewModal
           media={previewMedia}
