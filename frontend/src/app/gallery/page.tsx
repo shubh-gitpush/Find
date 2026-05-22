@@ -1,9 +1,7 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  ChevronLeft,
-  ChevronRight,
   Download,
   Eye,
   Heart,
@@ -36,6 +34,8 @@ import {
   MINIO_URL_STALE_TIME_MS,
   resolveMediaUrl,
 } from "@/lib/media";
+
+const GALLERY_LIMIT = 24;
 
 type GalleryFilter = "all" | "indexed" | "processing" | "failed";
 
@@ -148,7 +148,6 @@ function GalleryPageContent() {
   const [hasOpenedFromQuery, setHasOpenedFromQuery] = useState(false);
   const [querySelectedItem, setQuerySelectedItem] =
     useState<PreviewMedia | null>(null);
-  const limit = 24;
 
   const queryClient = useQueryClient();
   const pathname = usePathname();
@@ -156,39 +155,51 @@ function GalleryPageContent() {
   const searchParams = useSearchParams();
   const filter = getFilterFromStatusParam(searchParams.get("status"));
   const likedOnly = searchParams.get("liked") === "true";
-  const filterStateKey = `${filter}:${likedOnly}`;
-  const [pagination, setPagination] = useState({
-    filterStateKey,
-    page: 1,
-  });
-  const page =
-    pagination.filterStateKey === filterStateKey ? pagination.page : 1;
-  const galleryQueryKey = useMemo(
-    () => ["gallery", page, filter, likedOnly] as const,
-    [page, filter, likedOnly],
-  );
 
-  const { data, isLoading, error } = useQuery<GalleryResponse, Error>({
+  // The query key includes filter + likedOnly so any URL filter change
+  // automatically resets the infinite query back to page 1.
+  const galleryQueryKey = ["gallery-infinite", filter, likedOnly] as const;
+
+  const {
+    data,
+    isLoading,
+    error,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery<GalleryResponse, Error>({
     queryKey: galleryQueryKey,
-    queryFn: () =>
+    queryFn: ({ pageParam }) =>
       getGallery({
-        page,
-        limit,
+        page: typeof pageParam === "number" ? pageParam : 1,
+        limit: GALLERY_LIMIT,
         status: filter === "all" ? undefined : filter,
         liked: likedOnly ? true : undefined,
       }),
-    placeholderData: (previous) => previous,
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => {
+      const fetchedSoFar = lastPage.page * lastPage.limit;
+      return fetchedSoFar < lastPage.total ? lastPage.page + 1 : undefined;
+    },
     staleTime: MINIO_URL_STALE_TIME_MS,
     refetchInterval: (query) => {
-      const gallery = query.state.data as GalleryResponse | undefined;
-
-      return gallery?.items.some(
-        (item) => item.status === "processing" || item.status === "pending",
-      )
-        ? 5000
-        : MINIO_URL_REFRESH_INTERVAL_MS;
+      const pages = query.state.data?.pages;
+      const hasProcessing = pages?.some((page) =>
+        page.items.some(
+          (item) => item.status === "processing" || item.status === "pending",
+        ),
+      );
+      return hasProcessing ? 5000 : MINIO_URL_REFRESH_INTERVAL_MS;
     },
   });
+
+  // Flat list of all items across all loaded pages.
+  const allItems = useMemo(
+    () => data?.pages.flatMap((page) => page.items) ?? [],
+    [data],
+  );
+
+  const total = data?.pages[0]?.total ?? 0;
 
   const buildGalleryHref = useCallback(
     (nextState: { filter?: GalleryFilter; likedOnly?: boolean }) => {
@@ -241,7 +252,7 @@ function GalleryPageContent() {
       return;
     }
 
-    const existingItem = data.items.find((item) => item.id === mediaId);
+    const existingItem = allItems.find((item) => item.id === mediaId);
 
     if (existingItem) {
       setQuerySelectedItem(null);
@@ -273,11 +284,12 @@ function GalleryPageContent() {
     return () => {
       cancelled = true;
     };
-  }, [data, searchParams, hasOpenedFromQuery]);
+  }, [data, allItems, searchParams, hasOpenedFromQuery]);
+
   const likeMutation = useMutation({
     mutationFn: (mediaId: number) => toggleLike(mediaId),
     onSuccess: ({ id }) => {
-      queryClient.invalidateQueries({ queryKey: ["gallery"] });
+      queryClient.invalidateQueries({ queryKey: ["gallery-infinite"] });
       queryClient.invalidateQueries({ queryKey: ["image-detail", id] });
     },
   });
@@ -286,26 +298,24 @@ function GalleryPageContent() {
     mutationFn: (mediaId: number) => deleteImage(mediaId),
     onMutate: async (mediaId: number) => {
       setDeletionError(null);
-
       await queryClient.cancelQueries({ queryKey: galleryQueryKey });
-
       const previousData =
-        queryClient.getQueryData<GalleryResponse>(galleryQueryKey);
+        queryClient.getQueryData<{ pages: GalleryResponse[] }>(galleryQueryKey);
 
-      queryClient.setQueryData<GalleryResponse>(galleryQueryKey, (old) => {
-        if (!old) {
-          return old;
-        }
-        const filteredItems = old.items.filter((item) => item.id !== mediaId);
-        if (filteredItems.length === old.items.length) {
-          return old;
-        }
-        return {
-          ...old,
-          items: filteredItems,
-          total: Math.max(0, old.total - 1),
-        };
-      });
+      queryClient.setQueryData<{ pages: GalleryResponse[]; pageParams: unknown[] }>(
+        galleryQueryKey,
+        (old) => {
+          if (!old) return old;
+          return {
+            ...old,
+            pages: old.pages.map((page) => ({
+              ...page,
+              items: page.items.filter((item) => item.id !== mediaId),
+              total: Math.max(0, page.total - 1),
+            })),
+          };
+        },
+      );
 
       setSelectedMediaId((current) => (current === mediaId ? null : current));
       return { previousData };
@@ -325,14 +335,14 @@ function GalleryPageContent() {
       queryClient.invalidateQueries({ queryKey: ["image-detail", id] });
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["gallery"] });
+      queryClient.invalidateQueries({ queryKey: ["gallery-infinite"] });
     },
   });
 
   const reprocessMutation = useMutation({
     mutationFn: (mediaId: number) => reprocessImage(mediaId),
     onSuccess: ({ media_id }) => {
-      queryClient.invalidateQueries({ queryKey: ["gallery"] });
+      queryClient.invalidateQueries({ queryKey: ["gallery-infinite"] });
       queryClient.invalidateQueries({ queryKey: ["image-detail", media_id] });
       toast.success("Retry queued — analysis will restart shortly.");
     },
@@ -349,47 +359,47 @@ function GalleryPageContent() {
     }
 
     return (
-      data?.items.find((item) => item.id === selectedMediaId) ??
+      allItems.find((item) => item.id === selectedMediaId) ??
       (querySelectedItem?.id === selectedMediaId ? querySelectedItem : null)
     );
-  }, [data, selectedMediaId, querySelectedItem]);
+  }, [allItems, selectedMediaId, querySelectedItem]);
 
   const selectedIndex = useMemo(() => {
-    if (!data || selectedMediaId === null) {
+    if (selectedMediaId === null) {
       return -1;
     }
-    return data.items.findIndex((item) => item.id === selectedMediaId);
-  }, [data, selectedMediaId]);
+    return allItems.findIndex((item) => item.id === selectedMediaId);
+  }, [allItems, selectedMediaId]);
 
   useEffect(() => {
-    if (!data || selectedMediaId === null) {
+    if (selectedMediaId === null) {
       return;
     }
     if (
-      !data.items.some((item) => item.id === selectedMediaId) &&
+      !allItems.some((item) => item.id === selectedMediaId) &&
       querySelectedItem?.id !== selectedMediaId
     ) {
       setSelectedMediaId(null);
     }
-  }, [data, selectedMediaId, querySelectedItem]);
+  }, [allItems, selectedMediaId, querySelectedItem]);
 
   const goToAdjacent = useCallback(
     (direction: -1 | 1) => {
-      if (!data || selectedMediaId === null) {
+      if (selectedMediaId === null) {
         return;
       }
-      const currentIndex = data.items.findIndex(
+      const currentIndex = allItems.findIndex(
         (item) => item.id === selectedMediaId,
       );
       if (currentIndex === -1) {
         return;
       }
-      const next = data.items[currentIndex + direction];
+      const next = allItems[currentIndex + direction];
       if (next) {
         setSelectedMediaId(next.id);
       }
     },
-    [data, selectedMediaId],
+    [allItems, selectedMediaId],
   );
 
   const closeDetail = useCallback(() => {
@@ -421,21 +431,6 @@ function GalleryPageContent() {
     updateGalleryParams({ likedOnly: false });
   }, [updateGalleryParams]);
 
-  const updatePage = useCallback(
-    (updater: (currentPage: number) => number) => {
-      setPagination((current) => {
-        const currentPage =
-          current.filterStateKey === filterStateKey ? current.page : 1;
-
-        return {
-          filterStateKey,
-          page: updater(currentPage),
-        };
-      });
-    },
-    [filterStateKey],
-  );
-
   const handleToggleLike = useCallback(
     (mediaId: number) => {
       likeMutation.mutate(mediaId);
@@ -463,12 +458,14 @@ function GalleryPageContent() {
   }, []);
 
   const emptyGalleryCopy = useMemo(() => {
-    if (!data || data.items.length > 0) {
+    if (isLoading || allItems.length > 0) {
       return null;
     }
-
+    if (!data) {
+      return null;
+    }
     return getGalleryEmptyState(filter, likedOnly);
-  }, [data, filter, likedOnly]);
+  }, [isLoading, allItems, data, filter, likedOnly]);
 
   return (
     <div className="page-shell">
@@ -561,10 +558,10 @@ function GalleryPageContent() {
           </div>
         )}
 
-        {data && data.items.length > 0 && (
+        {allItems.length > 0 && (
           <>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6">
-              {data.items.map((item) => {
+              {allItems.map((item) => {
                 const imageSrc = resolveMediaUrl(item.url, item.minio_key);
                 const downloadUrl = imageSrc ?? item.url ?? "";
 
@@ -692,29 +689,27 @@ function GalleryPageContent() {
               })}
             </div>
 
-            {data.total > limit && (
-              <div className="mt-12 flex items-center justify-center gap-6">
+            {/* Load More */}
+            {hasNextPage && (
+              <div className="mt-12 flex flex-col items-center gap-2">
                 <button
                   type="button"
-                  onClick={() =>
-                    updatePage((current) => Math.max(1, current - 1))
-                  }
-                  disabled={page === 1}
-                  className="icon-button disabled:cursor-not-allowed disabled:opacity-30"
+                  onClick={() => void fetchNextPage()}
+                  disabled={isFetchingNextPage}
+                  className="frost-button inline-flex items-center gap-2 px-6 py-2.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <ChevronLeft className="h-5 w-5" />
+                  {isFetchingNextPage ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading…
+                    </>
+                  ) : (
+                    "Load more"
+                  )}
                 </button>
-                <span className="text-sm text-[color:var(--silver)]">
-                  Page {page} of {Math.ceil(data.total / limit)}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => updatePage((current) => current + 1)}
-                  disabled={page >= Math.ceil(data.total / limit)}
-                  className="icon-button disabled:cursor-not-allowed disabled:opacity-30"
-                >
-                  <ChevronRight className="h-5 w-5" />
-                </button>
+                <p className="text-xs text-[color:var(--silver)]">
+                  Showing {allItems.length} of {total}
+                </p>
               </div>
             )}
           </>
@@ -728,11 +723,7 @@ function GalleryPageContent() {
           onPrevious={() => goToAdjacent(-1)}
           onNext={() => goToAdjacent(1)}
           hasPrevious={selectedIndex > 0}
-          hasNext={
-            data
-              ? selectedIndex >= 0 && selectedIndex < data.items.length - 1
-              : false
-          }
+          hasNext={selectedIndex >= 0 && selectedIndex < allItems.length - 1}
           onDeleted={(mediaId) => {
             if (selectedMediaId === mediaId) {
               setSelectedMediaId(null);
