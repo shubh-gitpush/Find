@@ -12,7 +12,6 @@ from rq import get_current_job
 from find_api.core.database import SessionLocal
 from find_api.core.queue import clear_clustering_job_state, enqueue_clustering_job
 from find_api.core.storage import get_file, upload_thumbnail
-from find_api.core.storage import get_file
 from find_api.core.model_manager import get_model_manager
 from find_api.core.config import settings
 from find_api.models.media import Media
