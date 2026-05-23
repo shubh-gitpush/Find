@@ -82,8 +82,10 @@ class TestSearchResponseShape:
             "caption",
             "objects",
             "url",
+            "thumbnail_url",
         }
         assert expected.issubset(meta.keys())
+        assert meta["thumbnail_url"] == "/api/image/1/thumbnail"
 
     def test_empty_results(self, client):
         response = _mock_search(client, [])

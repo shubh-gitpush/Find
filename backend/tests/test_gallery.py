@@ -60,8 +60,10 @@ class TestGalleryResponseShape:
             "minio_key",
             "liked",
             "url",
+            "thumbnail_url",
         }
         assert expected_keys.issubset(item.keys())
+        assert item["thumbnail_url"] == f"/api/image/{item['id']}/thumbnail"
 
     def test_indexed_item_includes_metadata(self, client, db):
         _seed(
@@ -101,6 +103,7 @@ class TestGalleryResponseShape:
         response = client.get(f"/api/image/{media.id}")
         assert response.status_code == 200
         body = response.json()
+        assert body["thumbnail_url"] == f"/api/image/{media.id}/thumbnail"
         assert "stage_status" in body["metadata"]
         assert body["metadata"]["stage_status"]["captioning"]["status"] == "failed"
         assert (
