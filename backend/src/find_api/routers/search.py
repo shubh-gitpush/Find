@@ -12,6 +12,7 @@ from typing import Dict
 from find_api.core.config import settings
 from find_api.core.database import get_db
 from find_api.core.storage import get_file_url
+from find_api.routers.gallery import build_thumbnail_url
 
 router = APIRouter()
 
@@ -60,10 +61,13 @@ def search_images(
         SELECT COUNT(*) as total
         FROM media
         WHERE status = 'indexed' AND vector IS NOT NULL
+        AND is_hidden = false
         AND 1 - (vector <=> CAST(:embedding AS vector)) > :threshold
     """
     )
-    count_result = db.execute(count_query, {"embedding": embedding_str, "threshold": threshold})
+    count_result = db.execute(
+        count_query, {"embedding": embedding_str, "threshold": threshold}
+    )
     total_count = count_result.scalar() or 0
 
     # Get paginated results
@@ -74,8 +78,14 @@ def search_images(
                 id,
                 filename,
                 minio_key,
+                thumbnail_key,
+                thumbnail_content_type,
+                thumbnail_size,
+                thumbnail_width,
+                thumbnail_height,
                 status,
                 liked,
+                is_hidden,
                 metadata_json,
                 cluster_id,
                 width,
@@ -86,14 +96,15 @@ def search_images(
             WHERE status = 'indexed' AND vector IS NOT NULL
         )
         SELECT * FROM ranked_results
-        WHERE similarity > :threshold
+        WHERE similarity > :threshold AND is_hidden = false
         ORDER BY similarity DESC, id ASC
         LIMIT :limit OFFSET :skip
     """
     )
 
     result = db.execute(
-        query_sql, {"embedding": embedding_str, "limit": limit, "skip": skip, "threshold": threshold}
+        query_sql,
+        {"embedding": embedding_str, "limit": limit, "skip": skip, "threshold": threshold},
     )
 
     # Build response
@@ -120,6 +131,11 @@ def search_images(
             "id": row.id,
             "filename": row.filename,
             "minio_key": row.minio_key,
+            "thumbnail_key": row.thumbnail_key,
+            "thumbnail_content_type": row.thumbnail_content_type,
+            "thumbnail_size": row.thumbnail_size,
+            "thumbnail_width": row.thumbnail_width,
+            "thumbnail_height": row.thumbnail_height,
             "status": row.status,
             "liked": bool(row.liked),
             "width": row.width,
@@ -134,6 +150,7 @@ def search_images(
             media_metadata["url"] = get_file_url(row.minio_key)
         except Exception:
             media_metadata["url"] = None
+        media_metadata["thumbnail_url"] = build_thumbnail_url(row.id)
 
         results.append(
             {
