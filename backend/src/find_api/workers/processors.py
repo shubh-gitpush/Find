@@ -209,9 +209,7 @@ def generate_hybrid_embedding(
             # Degenerate fallback — return the image vector unchanged
             hybrid_vector = image_embedding
 
-        logger.info(
-            "Hybrid embedding generated (signals=%d: %s)", n, active_signals
-        )
+        logger.info("Hybrid embedding generated (signals=%d: %s)", n, active_signals)
         return hybrid_vector.tolist()
 
     except Exception:

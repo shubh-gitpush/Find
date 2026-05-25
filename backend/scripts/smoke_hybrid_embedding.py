@@ -11,6 +11,7 @@ Usage (from repo root):
     python -m pytest backend/tests/test_hybrid_embedding.py -v
     python backend/scripts/smoke_hybrid_embedding.py
 """
+
 from __future__ import annotations
 
 import os
@@ -30,11 +31,11 @@ os.environ.setdefault("ML_MODE", "mock")
 # ---------------------------------------------------------------------------
 # Colour helpers
 # ---------------------------------------------------------------------------
-GREEN  = "\033[92m"
-RED    = "\033[91m"
+GREEN = "\033[92m"
+RED = "\033[91m"
 YELLOW = "\033[93m"
-RESET  = "\033[0m"
-BOLD   = "\033[1m"
+RESET = "\033[0m"
+BOLD = "\033[1m"
 
 _passed = 0
 _failed = 0
@@ -69,6 +70,7 @@ def _fake_image(r: int = 100, g: int = 149, b: int = 237) -> Image.Image:
 # ---------------------------------------------------------------------------
 # Smoke checks
 # ---------------------------------------------------------------------------
+
 
 def smoke_mock_mode_returns_list():
     """Mock mode path (no CLIP) still returns a valid float list."""
@@ -119,8 +121,8 @@ def smoke_different_images_different_vectors():
     section("3. Different images → different vectors")
     from find_api.workers.processors import generate_hybrid_embedding
 
-    img_a = _fake_image(255, 0, 0)    # red
-    img_b = _fake_image(0, 0, 255)    # blue
+    img_a = _fake_image(255, 0, 0)  # red
+    img_b = _fake_image(0, 0, 255)  # blue
     meta = {"caption": "", "objects": []}
 
     r_a = np.array(generate_hybrid_embedding(img_a, meta))
@@ -142,10 +144,13 @@ def smoke_no_objects_vs_with_objects_differ():
     from find_api.workers.processors import generate_hybrid_embedding
 
     img = _fake_image(80, 160, 80)
-    meta_no_objects  = {"caption": "a forest",  "objects": []}
-    meta_with_objects = {"caption": "a forest", "objects": [{"class": "tree"}, {"class": "bird"}]}
+    meta_no_objects = {"caption": "a forest", "objects": []}
+    meta_with_objects = {
+        "caption": "a forest",
+        "objects": [{"class": "tree"}, {"class": "bird"}],
+    }
 
-    r_no  = np.array(generate_hybrid_embedding(img, meta_no_objects))
+    r_no = np.array(generate_hybrid_embedding(img, meta_no_objects))
     r_yes = np.array(generate_hybrid_embedding(img, meta_with_objects))
 
     if not np.allclose(r_no, r_yes):
@@ -161,10 +166,10 @@ def smoke_caption_changes_embedding():
     from find_api.workers.processors import generate_hybrid_embedding
 
     img = _fake_image(200, 200, 50)
-    meta_no_cap   = {"caption": "",                "objects": []}
-    meta_with_cap = {"caption": "a golden field",  "objects": []}
+    meta_no_cap = {"caption": "", "objects": []}
+    meta_with_cap = {"caption": "a golden field", "objects": []}
 
-    r_no  = np.array(generate_hybrid_embedding(img, meta_no_cap))
+    r_no = np.array(generate_hybrid_embedding(img, meta_no_cap))
     r_yes = np.array(generate_hybrid_embedding(img, meta_with_cap))
 
     if not np.allclose(r_no, r_yes):
@@ -180,10 +185,10 @@ def smoke_unit_norm_all_scenarios():
 
     img = _fake_image()
     scenarios = [
-        ("no caption, no objects",  "",             []),
-        ("caption only",            "a sunny day",  []),
-        ("objects only",            "",             [{"class": "sun"}]),
-        ("caption + objects",       "a sunny day",  [{"class": "sun"}]),
+        ("no caption, no objects", "", []),
+        ("caption only", "a sunny day", []),
+        ("objects only", "", [{"class": "sun"}]),
+        ("caption + objects", "a sunny day", [{"class": "sun"}]),
     ]
 
     for label, caption, objects in scenarios:
@@ -205,10 +210,10 @@ def smoke_malformed_objects_no_crash():
     meta = {
         "caption": "scene",
         "objects": [
-            {"label": "cat"},   # wrong key
-            {"name": "dog"},    # wrong key
-            {},                 # empty dict
-            "not a dict",       # not a dict at all
+            {"label": "cat"},  # wrong key
+            {"name": "dog"},  # wrong key
+            {},  # empty dict
+            "not a dict",  # not a dict at all
         ],
     }
     try:

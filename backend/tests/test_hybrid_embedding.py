@@ -8,6 +8,7 @@ Run with:
     cd backend
     python -m pytest tests/test_hybrid_embedding.py -v
 """
+
 from __future__ import annotations
 
 import sys
@@ -22,6 +23,7 @@ DIM = 8  # small vector size — enough to test the math
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _unit(v: np.ndarray) -> np.ndarray:
     """Return L2-normalised copy of v."""
@@ -102,15 +104,16 @@ def _run(
 # ---------------------------------------------------------------------------
 # Pre-computed vectors used across tests
 # ---------------------------------------------------------------------------
-IMG_VEC   = _make_image_vec(1)
-CAP_VEC   = _make_text_vec(2)
-OBJ_VEC   = _make_text_vec(3)
+IMG_VEC = _make_image_vec(1)
+CAP_VEC = _make_text_vec(2)
+OBJ_VEC = _make_text_vec(3)
 EMPTY_VEC = _make_text_vec(99)  # what "" would produce — should NEVER appear
 
 
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 class TestHybridEmbeddingSignalSelection:
     """Verify which signals are used based on available metadata."""
@@ -184,9 +187,7 @@ class TestHybridEmbeddingSignalSelection:
 
         # Called once with the list of two strings
         assert embedder.embed_text.call_count == 1
-        embedder.embed_text.assert_called_once_with(
-            ["a cat on a mat", objects_text]
-        )
+        embedder.embed_text.assert_called_once_with(["a cat on a mat", objects_text])
 
 
 class TestHybridEmbeddingEdgeCases:
@@ -207,7 +208,7 @@ class TestHybridEmbeddingEdgeCases:
         """None caption → treated as no caption."""
         result, embedder = _run(
             image_vec=IMG_VEC,
-            caption=None,         # metadata.get("caption") returns None
+            caption=None,  # metadata.get("caption") returns None
             objects=[],
             text_map={},
         )
@@ -292,17 +293,17 @@ class TestBiasRemoval:
         across all four signal combinations.
         """
         scenarios = [
-            ("",         []),
+            ("", []),
             ("a sunset", []),
-            ("",         [{"class": "car"}]),
-            ("a road",   [{"class": "car"}]),
+            ("", [{"class": "car"}]),
+            ("a road", [{"class": "car"}]),
         ]
 
         all_text_maps = {
-            "a sunset":                _make_text_vec(10),
-            "a road":                  _make_text_vec(11),
-            "detected objects: car":   _make_text_vec(12),
-            "":                        EMPTY_VEC,  # present but must NOT be called
+            "a sunset": _make_text_vec(10),
+            "a road": _make_text_vec(11),
+            "detected objects: car": _make_text_vec(12),
+            "": EMPTY_VEC,  # present but must NOT be called
         }
 
         for caption, objects in scenarios:
