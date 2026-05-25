@@ -821,18 +821,18 @@ function GalleryPageContent() {
 
         {allItems.length > 0 && (
           <>
-            <div className="frost-panel mb-4 flex flex-col gap-3 rounded-2xl px-4 py-3 md:flex-row md:items-center md:justify-between">
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleToggleVisibleSelection}
-                  aria-pressed={areAllVisibleSelected}
-                  className="frost-button inline-flex items-center gap-2 px-3 py-2 text-xs font-medium"
-                >
-                  <Check className="h-3.5 w-3.5" />
-                  {areAllVisibleSelected ? "Clear visible" : "Select visible"}
-                </button>
-                {selectedCount > 0 && (
+            {selectedCount > 0 && (
+              <div className="frost-panel mb-4 flex flex-col gap-3 rounded-2xl px-4 py-3 md:flex-row md:items-center md:justify-between">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleToggleVisibleSelection}
+                    aria-pressed={areAllVisibleSelected}
+                    className="frost-button inline-flex items-center gap-2 px-3 py-2 text-xs font-medium"
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                    {areAllVisibleSelected ? "Clear visible" : "Select visible"}
+                  </button>
                   <button
                     type="button"
                     onClick={handleClearSelection}
@@ -840,30 +840,26 @@ function GalleryPageContent() {
                   >
                     Clear selection
                   </button>
-                )}
-              </div>
+                </div>
 
-              <div className="flex flex-wrap items-center gap-3">
-                <span className="text-xs text-[color:var(--silver)]">
-                  {selectedCount > 0
-                    ? `${selectedCount} selected`
-                    : `${allItems.length} shown`}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setBulkDeleteOpen(true)}
-                  disabled={
-                    selectedCount === 0 ||
-                    deleteMutation.isPending ||
-                    bulkDeleteMutation.isPending
-                  }
-                  className="inline-flex items-center gap-2 rounded-full border border-[var(--red-soft)] bg-[var(--red-soft)] px-4 py-2 text-xs font-semibold text-[#ff9bab] transition hover:bg-[#ff2047]/25 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  Delete selected
-                </button>
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-xs text-[color:var(--silver)]">
+                    {selectedCount} selected
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setBulkDeleteOpen(true)}
+                    disabled={
+                      deleteMutation.isPending || bulkDeleteMutation.isPending
+                    }
+                    className="inline-flex items-center gap-2 rounded-full border border-[var(--red-soft)] bg-[var(--red-soft)] px-4 py-2 text-xs font-semibold text-[#ff9bab] transition hover:bg-[#ff2047]/25 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Delete selected
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6">
               {allItems.map((item) => {
