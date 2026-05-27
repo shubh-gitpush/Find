@@ -417,7 +417,7 @@
     background-color: var(--surface-soft);
   }
 
-  /* 修复 Issue #166：移除亮色模式下画廊/搜索卡片上泥泞的暗色覆盖层 */
+  /* Keep light-mode image cards clear without changing the dark theme fade. */
   html.light .card-hover .bg-gradient-to-t,
   html[data-theme="light"] .card-hover .bg-gradient-to-t {
     background-image: linear-gradient(
